@@ -1,0 +1,380 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>محلل البيانات الذكي | Auto Data Analyzer</title>
+
+<!-- Plotly.js from CDN for rendering charts -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/plotly.js/2.27.0/plotly.min.js"></script>
+
+<style>
+  :root {
+    --bg: #0f1115;
+    --panel: #171a21;
+    --panel-2: #1e222b;
+    --border: #2a2f3a;
+    --text: #e8eaed;
+    --muted: #8b919c;
+    --accent: #5eead4;   /* teal accent - data/analysis feel */
+    --accent-2: #f59e0b;  /* amber for highlights */
+    --danger: #f87171;
+    --radius: 10px;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: "Segoe UI", Tahoma, "Helvetica Neue", Arial, sans-serif;
+    min-height: 100vh;
+  }
+
+  header {
+    padding: 28px 24px 18px;
+    border-bottom: 1px solid var(--border);
+    text-align: center;
+  }
+
+  header h1 {
+    margin: 0 0 6px;
+    font-size: 26px;
+    letter-spacing: 0.3px;
+  }
+
+  header h1 span { color: var(--accent); }
+
+  header p {
+    margin: 0;
+    color: var(--muted);
+    font-size: 14px;
+  }
+
+  main {
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 28px 20px 60px;
+  }
+
+  .upload-box {
+    background: var(--panel);
+    border: 1px dashed var(--border);
+    border-radius: var(--radius);
+    padding: 36px 24px;
+    text-align: center;
+    transition: border-color 0.2s ease, background 0.2s ease;
+  }
+
+  .upload-box.dragover {
+    border-color: var(--accent);
+    background: var(--panel-2);
+  }
+
+  .upload-box p.hint {
+    color: var(--muted);
+    font-size: 13px;
+    margin-top: 10px;
+  }
+
+  #fileInput { display: none; }
+
+  .file-label {
+    display: inline-block;
+    padding: 10px 22px;
+    background: var(--accent);
+    color: #0f1115;
+    font-weight: 600;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: opacity 0.2s ease;
+  }
+  .file-label:hover { opacity: 0.85; }
+
+  #fileNameDisplay {
+    margin-top: 14px;
+    font-size: 14px;
+    color: var(--accent-2);
+  }
+
+  #analyzeBtn {
+    margin-top: 18px;
+    display: none;
+    padding: 12px 30px;
+    background: var(--accent-2);
+    color: #1a1300;
+    font-weight: 700;
+    font-size: 15px;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: transform 0.15s ease, opacity 0.2s ease;
+  }
+  #analyzeBtn:hover { transform: translateY(-1px); }
+  #analyzeBtn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+
+  #status {
+    margin-top: 16px;
+    font-size: 14px;
+    color: var(--muted);
+    min-height: 20px;
+  }
+  #status.error { color: var(--danger); }
+
+  .summary {
+    display: none;
+    margin: 24px 0;
+    padding: 16px 20px;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    font-size: 14px;
+    color: var(--muted);
+  }
+  .summary b { color: var(--text); }
+
+  #chartsContainer {
+    display: flex;
+    flex-direction: column;
+    gap: 22px;
+    margin-top: 10px;
+  }
+
+  .chart-card {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    overflow: hidden;
+  }
+
+  .chart-card .chart-header {
+    padding: 14px 18px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+
+  .chart-card .chart-header h3 {
+    margin: 0;
+    font-size: 16px;
+  }
+
+  .badge {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    padding: 3px 10px;
+    border-radius: 20px;
+    background: var(--panel-2);
+    color: var(--accent);
+    border: 1px solid var(--border);
+    white-space: nowrap;
+  }
+
+  .chart-plot { width: 100%; min-height: 380px; }
+
+  .chart-explanation {
+    padding: 14px 18px;
+    border-top: 1px solid var(--border);
+    font-size: 13.5px;
+    color: var(--muted);
+    line-height: 1.7;
+  }
+  .chart-explanation .en {
+    display: block;
+    margin-top: 6px;
+    direction: ltr;
+    text-align: left;
+    color: #6b7280;
+    font-size: 12.5px;
+  }
+
+  footer {
+    text-align: center;
+    color: var(--muted);
+    font-size: 12px;
+    padding: 20px;
+  }
+
+  @media (max-width: 600px) {
+    header h1 { font-size: 21px; }
+    .upload-box { padding: 26px 14px; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>محلل البيانات <span>الذكي</span></h1>
+  <p>ارفع ملف CSV أو Excel، واترك الذكاء الاصطناعي يختار الرسوم البيانية المناسبة تلقائياً</p>
+</header>
+
+<main>
+  <div class="upload-box" id="dropZone">
+    <label for="fileInput" class="file-label">اختر ملفاً (CSV / Excel)</label>
+    <input type="file" id="fileInput" accept=".csv,.xlsx,.xls" />
+    <p class="hint">أو اسحب الملف وأسقطه هنا — الحد الأقصى 20MB</p>
+    <div id="fileNameDisplay"></div>
+    <button id="analyzeBtn">🔍 تحليل البيانات</button>
+    <div id="status"></div>
+  </div>
+
+  <div class="summary" id="summaryBox"></div>
+
+  <div id="chartsContainer"></div>
+</main>
+
+<footer>Auto Data Analyzer — Powered by FastAPI + Plotly</footer>
+
+<script>
+  // ====== Configuration ======
+  // EN: Change this if your backend runs on a different host/port.
+  // AR: غيّر هذا الرابط إذا كان الـ backend يعمل على عنوان/منفذ مختلف.
+  const API_BASE_URL = window.location.origin; // assumes frontend is served by the same FastAPI app
+
+  const fileInput = document.getElementById("fileInput");
+  const fileNameDisplay = document.getElementById("fileNameDisplay");
+  const analyzeBtn = document.getElementById("analyzeBtn");
+  const statusEl = document.getElementById("status");
+  const dropZone = document.getElementById("dropZone");
+  const summaryBox = document.getElementById("summaryBox");
+  const chartsContainer = document.getElementById("chartsContainer");
+
+  let selectedFile = null;
+
+  // ----- File selection via click -----
+  fileInput.addEventListener("change", (e) => {
+    if (e.target.files.length > 0) {
+      setSelectedFile(e.target.files[0]);
+    }
+  });
+
+  // ----- Drag & drop support -----
+  ["dragenter", "dragover"].forEach((evt) => {
+    dropZone.addEventListener(evt, (e) => {
+      e.preventDefault();
+      dropZone.classList.add("dragover");
+    });
+  });
+  ["dragleave", "drop"].forEach((evt) => {
+    dropZone.addEventListener(evt, (e) => {
+      e.preventDefault();
+      dropZone.classList.remove("dragover");
+    });
+  });
+  dropZone.addEventListener("drop", (e) => {
+    if (e.dataTransfer.files.length > 0) {
+      setSelectedFile(e.dataTransfer.files[0]);
+    }
+  });
+
+  function setSelectedFile(file) {
+    selectedFile = file;
+    fileNameDisplay.textContent = `📄 ${file.name} (${(file.size / 1024).toFixed(1)} KB)`;
+    analyzeBtn.style.display = "inline-block";
+    statusEl.textContent = "";
+    statusEl.classList.remove("error");
+  }
+
+  // ----- Analyze button click -----
+  analyzeBtn.addEventListener("click", async () => {
+    if (!selectedFile) return;
+
+    analyzeBtn.disabled = true;
+    statusEl.classList.remove("error");
+    statusEl.textContent = "⏳ جارٍ تحليل البيانات...";
+    chartsContainer.innerHTML = "";
+    summaryBox.style.display = "none";
+
+    const formData = new FormData();
+    formData.append("file", selectedFile);
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/analyze`, {
+        method: "POST",
+        body: formData,
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.detail || "حدث خطأ غير متوقع");
+      }
+
+      renderResults(data);
+      statusEl.textContent = `✅ تم التحليل بنجاح — ${data.charts.length} رسم بياني`;
+    } catch (err) {
+      statusEl.textContent = `❌ ${err.message}`;
+      statusEl.classList.add("error");
+    } finally {
+      analyzeBtn.disabled = false;
+    }
+  });
+
+  function renderResults(data) {
+    // ----- Summary -----
+    summaryBox.style.display = "block";
+    summaryBox.innerHTML = `
+      📊 <b>${data.n_rows}</b> صف &nbsp;|&nbsp;
+      📁 <b>${data.n_columns}</b> عمود &nbsp;|&nbsp;
+      🧩 الأعمدة: ${data.columns.join("، ")}
+    `;
+
+    // ----- Charts -----
+    chartsContainer.innerHTML = "";
+
+    const chartTypeLabels = {
+      line: "📈 خطي",
+      bar: "📊 شريطي",
+      pie: "🥧 دائري",
+      scatter: "🔵 مبعثر",
+      histogram: "📶 مدرج تكراري",
+      wordcloud: "☁️ سحابة كلمات",
+    };
+
+    data.charts.forEach((chart, idx) => {
+      const card = document.createElement("div");
+      card.className = "chart-card";
+
+      const header = document.createElement("div");
+      header.className = "chart-header";
+      header.innerHTML = `
+        <h3>${chart.title}</h3>
+        <span class="badge">${chartTypeLabels[chart.chart_type] || chart.chart_type}</span>
+      `;
+
+      const plotDiv = document.createElement("div");
+      plotDiv.className = "chart-plot";
+      plotDiv.id = `chart-${idx}`;
+
+      const explanation = document.createElement("div");
+      explanation.className = "chart-explanation";
+      explanation.innerHTML = `
+        ${chart.explanation_ar}
+        <span class="en">${chart.explanation_en}</span>
+      `;
+
+      card.appendChild(header);
+      card.appendChild(plotDiv);
+      card.appendChild(explanation);
+      chartsContainer.appendChild(card);
+
+      // Parse and render the Plotly figure JSON
+      const figure = JSON.parse(chart.figure_json);
+      Plotly.newPlot(plotDiv.id, figure.data, {
+        ...figure.layout,
+        paper_bgcolor: "#171a21",
+        plot_bgcolor: "#171a21",
+        font: { color: "#e8eaed" },
+        margin: { t: 40, r: 20, l: 50, b: 50 },
+      }, { responsive: true, displaylogo: false });
+    });
+  }
+</script>
+
+</body>
+</html>

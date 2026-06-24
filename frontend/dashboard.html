@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>تقرير التحليل | Analysis Dashboard</title>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/plotly.js/2.27.0/plotly.min.js"></script>
+
+<style>
+  :root {
+    --bg: #0f1115;
+    --panel: #171a21;
+    --panel-2: #1e222b;
+    --border: #2a2f3a;
+    --text: #e8eaed;
+    --muted: #8b919c;
+    --accent: #5eead4;
+    --accent-2: #f59e0b;
+    --danger: #f87171;
+    --radius: 10px;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: "Segoe UI", Tahoma, "Helvetica Neue", Arial, sans-serif;
+    min-height: 100vh;
+  }
+
+  header {
+    padding: 24px 20px 16px;
+    border-bottom: 1px solid var(--border);
+    text-align: center;
+  }
+
+  header h1 { margin: 0 0 6px; font-size: 22px; }
+  header h1 span { color: var(--accent); }
+  header p { margin: 0; color: var(--muted); font-size: 13px; }
+
+  main {
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 24px 16px 60px;
+  }
+
+  #loadingBox, #errorBox {
+    text-align: center;
+    padding: 60px 20px;
+    color: var(--muted);
+  }
+  #errorBox { display: none; color: var(--danger); }
+
+  .spinner {
+    width: 36px; height: 36px;
+    border: 3px solid var(--border);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    margin: 0 auto 16px;
+    animation: spin 0.9s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .summary {
+    display: none;
+    margin-bottom: 22px;
+    padding: 16px 20px;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    font-size: 14px;
+    color: var(--muted);
+  }
+  .summary b { color: var(--text); }
+
+  #chartsContainer { display: flex; flex-direction: column; gap: 22px; }
+
+  .chart-card {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    overflow: hidden;
+  }
+  .chart-card .chart-header {
+    padding: 14px 18px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+  .chart-card .chart-header h3 { margin: 0; font-size: 16px; }
+
+  .badge {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    padding: 3px 10px;
+    border-radius: 20px;
+    background: var(--panel-2);
+    color: var(--accent);
+    border: 1px solid var(--border);
+    white-space: nowrap;
+  }
+
+  .chart-plot { width: 100%; min-height: 380px; }
+
+  .chart-explanation {
+    padding: 14px 18px;
+    border-top: 1px solid var(--border);
+    font-size: 13.5px;
+    color: var(--muted);
+    line-height: 1.7;
+  }
+  .chart-explanation .en {
+    display: block;
+    margin-top: 6px;
+    direction: ltr;
+    text-align: left;
+    color: #6b7280;
+    font-size: 12.5px;
+  }
+
+  .footer-note {
+    text-align: center;
+    color: var(--muted);
+    font-size: 12px;
+    padding: 24px 20px 10px;
+  }
+
+  @media (max-width: 600px) {
+    header h1 { font-size: 19px; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>تقرير التحليل <span>الذكي</span></h1>
+  <p>تم إنشاء هذا التقرير تلقائياً بناءً على الملف المرفوع</p>
+</header>
+
+<main>
+  <div id="loadingBox">
+    <div class="spinner"></div>
+    <p>⏳ جارٍ تحميل التقرير...</p>
+  </div>
+
+  <div id="errorBox"></div>
+
+  <div class="summary" id="summaryBox"></div>
+  <div id="chartsContainer"></div>
+</main>
+
+<p class="footer-note">Auto Data Analyzer — Powered by FastAPI + Plotly</p>
+
+<script>
+  // ====== Get session_id from URL path: /dashboard/{session_id} ======
+  function getSessionIdFromUrl() {
+    const parts = window.location.pathname.split("/").filter(Boolean);
+    return parts[parts.length - 1];
+  }
+
+  const API_BASE_URL = window.location.origin;
+  const sessionId = getSessionIdFromUrl();
+
+  const loadingBox = document.getElementById("loadingBox");
+  const errorBox = document.getElementById("errorBox");
+  const summaryBox = document.getElementById("summaryBox");
+  const chartsContainer = document.getElementById("chartsContainer");
+
+  const chartTypeLabels = {
+    line: "📈 خطي",
+    bar: "📊 شريطي",
+    pie: "🥧 دائري",
+    scatter: "🔵 مبعثر",
+    histogram: "📶 مدرج تكراري",
+    wordcloud: "☁️ سحابة كلمات",
+  };
+
+  async function loadDashboard() {
+    if (!sessionId) {
+      showError("رابط غير صالح — لا يوجد رقم جلسة (session_id).");
+      return;
+    }
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/session/${sessionId}`);
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.detail || "تعذّر تحميل التقرير");
+      }
+
+      renderResults(data);
+    } catch (err) {
+      showError(err.message);
+    }
+  }
+
+  function showError(message) {
+    loadingBox.style.display = "none";
+    errorBox.style.display = "block";
+    errorBox.innerHTML = `❌ ${message}<br><br><span style="color:#8b919c; font-size:13px;">تأكد من أن الرابط صحيح وأن الجلسة لم تنتهِ صلاحيتها (24 ساعة).</span>`;
+  }
+
+  function renderResults(data) {
+    loadingBox.style.display = "none";
+
+    summaryBox.style.display = "block";
+    summaryBox.innerHTML = `
+      📊 <b>${data.n_rows}</b> صف &nbsp;|&nbsp;
+      📁 <b>${data.n_columns}</b> عمود &nbsp;|&nbsp;
+      🧩 الأعمدة: ${data.columns.join("، ")}
+    `;
+
+    chartsContainer.innerHTML = "";
+
+    data.charts.forEach((chart, idx) => {
+      const card = document.createElement("div");
+      card.className = "chart-card";
+
+      const header = document.createElement("div");
+      header.className = "chart-header";
+      header.innerHTML = `
+        <h3>${chart.title}</h3>
+        <span class="badge">${chartTypeLabels[chart.chart_type] || chart.chart_type}</span>
+      `;
+
+      const plotDiv = document.createElement("div");
+      plotDiv.className = "chart-plot";
+      plotDiv.id = `chart-${idx}`;
+
+      const explanation = document.createElement("div");
+      explanation.className = "chart-explanation";
+      explanation.innerHTML = `
+        ${chart.explanation_ar}
+        <span class="en">${chart.explanation_en}</span>
+      `;
+
+      card.appendChild(header);
+      card.appendChild(plotDiv);
+      card.appendChild(explanation);
+      chartsContainer.appendChild(card);
+
+      const figure = JSON.parse(chart.figure_json);
+      Plotly.newPlot(plotDiv.id, figure.data, {
+        ...figure.layout,
+        paper_bgcolor: "#171a21",
+        plot_bgcolor: "#171a21",
+        font: { color: "#e8eaed" },
+        margin: { t: 40, r: 20, l: 50, b: 50 },
+      }, { responsive: true, displaylogo: false });
+    });
+  }
+
+  loadDashboard();
+</script>
+
+</body>
+</html>
